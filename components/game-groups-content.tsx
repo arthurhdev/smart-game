@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getGameGroups, type GameGroup } from "@/actions/get-games";
+import { getGameGroups, getTables, type GameGroup } from "@/actions/get-games";
 
 const GAMES_PER_GROUP = 84;
 const GRID_ROWS = 6;
@@ -99,22 +99,59 @@ export default function GameGroupsContent() {
   const [gameGroups, setGameGroups] = useState<GameGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [groupLimit, setGroupLimit] = useState(10);
+  const [selectedTable, setSelectedTable] = useState<string>("");
+  const [tables, setTables] = useState<string[]>([]);
 
   useEffect(() => {
-    async function fetchGames() {
-      setLoading(true);
+    async function fetchTables() {
       try {
-        const groups = await getGameGroups(groupLimit);
+        const tablesList = await getTables();
+        setTables(tablesList);
+        // Selecionar a primeira mesa automaticamente se ainda não houver uma selecionada
+        if (tablesList.length > 0) {
+          setSelectedTable((prev) => (prev || tablesList[0]));
+        }
+      } catch (error) {
+        console.error("Erro ao buscar mesas:", error);
+      }
+    }
+
+    fetchTables();
+  }, []);
+
+  useEffect(() => {
+    async function fetchGames(showLoading = true) {
+      // Só buscar jogos se houver uma mesa selecionada
+      if (!selectedTable) return;
+
+      if (showLoading) {
+        setLoading(true);
+      }
+      try {
+        const groups = await getGameGroups(groupLimit, selectedTable);
         setGameGroups(groups);
       } catch (error) {
         console.error("Erro ao buscar jogos:", error);
       } finally {
-        setLoading(false);
+        if (showLoading) {
+          setLoading(false);
+        }
       }
     }
 
-    fetchGames();
-  }, [groupLimit]);
+    // Buscar imediatamente quando os filtros mudarem
+    fetchGames(true);
+
+    // Configurar atualização automática a cada 30 segundos
+    const intervalId = setInterval(() => {
+      fetchGames(false); // Não mostrar loading nas atualizações automáticas
+    }, 30000);
+
+    // Limpar o intervalo quando o componente for desmontado ou as dependências mudarem
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [groupLimit, selectedTable]);
 
   if (loading) {
     return (
@@ -130,7 +167,18 @@ export default function GameGroupsContent() {
     <>
       <header className="w-full p-6">
         {/* container */}
-        <div className="mx-auto flex max-w-7xl justify-end">
+        <div className="mx-auto flex max-w-7xl justify-between">
+          <select
+            className="cursor-pointer rounded-xl border border-slate-200/50 bg-slate-100 px-6 py-2"
+            value={selectedTable}
+            onChange={(e) => setSelectedTable(e.target.value)}
+          >
+            {tables.map((table) => (
+              <option key={table} value={table}>
+                Mesa {table}
+              </option>
+            ))}
+          </select>
           <select
             className="cursor-pointer rounded-xl border border-slate-200/50 bg-slate-100 px-6 py-2"
             value={groupLimit}

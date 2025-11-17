@@ -17,9 +17,33 @@ export interface GameGroup {
   };
 }
 
-export async function getGameGroups(limit: number = 10): Promise<GameGroup[]> {
-  // Buscar os grupos únicos limitados
+export async function getTables(): Promise<string[]> {
+  const tables = await prisma.game.findMany({
+    select: {
+      table: true,
+    },
+    distinct: ["table"],
+    orderBy: {
+      table: "asc",
+    },
+  });
+
+  return tables.map((t) => t.table);
+}
+
+export async function getGameGroups(
+  limit: number = 10,
+  table?: string
+): Promise<GameGroup[]> {
+  // Construir o where clause baseado no filtro de mesa
+  const whereClause: { table?: string } = {};
+  if (table) {
+    whereClause.table = table;
+  }
+
+  // Buscar os grupos únicos limitados, filtrados por mesa se fornecida
   const groups = await prisma.game.findMany({
+    where: whereClause,
     select: {
       group: true,
     },
@@ -36,6 +60,7 @@ export async function getGameGroups(limit: number = 10): Promise<GameGroup[]> {
       const games = await prisma.game.findMany({
         where: {
           group,
+          ...(table && { table }),
         },
         select: {
           id: true,

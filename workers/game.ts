@@ -7,16 +7,15 @@ import { shortUUID } from '@/lib/utils'
 import { GameResult } from '@/types/websocket-message'
 import { prisma } from '@/lib/prisma'
 
+const gameSubdomain = process.env.GAME_SUBDOMAIN!
 const gameSessionId = process.env.GAME_SESSION_ID!
 const gameTableId = process.env.GAME_TABLE_ID!
 
-const url = `wss://gs19.pragmaticplaylive.net/game?JSESSIONID=${gameSessionId}&tableId=${gameTableId}&type=json`
-
-console.log(url)
+const url = `wss://${gameSubdomain}.pragmaticplaylive.net/game?JSESSIONID=${gameSessionId}&tableId=${gameTableId}&type=json`
 
 const ws = new WebSocket(url, {
   headers: {
-    'Host': 'gs19.pragmaticplaylive.net',
+    'Host': `${gameSubdomain}.pragmaticplaylive.net`,
     'Connection': 'Upgrade',
     'Pragma': 'no-cache',
     'Cache-Control': 'no-cache',
