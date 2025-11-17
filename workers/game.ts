@@ -6,6 +6,17 @@ import WebSocket from 'ws'
 import { shortUUID } from '@/lib/utils'
 import { GameResult } from '@/types/websocket-message'
 import { prisma } from '@/lib/prisma'
+import * as Sentry from "@sentry/node";
+
+if (!process.env.SENTRY_DSN) {
+  console.warn('⚠️ SENTRY_DSN não configurado!')
+  process.exit(1)
+}
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  tracesSampleRate: 1.0,
+});
 
 const gameSubdomain = process.env.GAME_SUBDOMAIN!
 const gameSessionId = process.env.GAME_SESSION_ID!
@@ -37,8 +48,6 @@ const clearPingInterval = () => {
 }
 
 ws.on('open', () => {
-  console.log('Connected to the game table')
-
   pingInterval = setInterval(() => {
     ws.send(`<ping channel="table-${gameTableId}" time="${Date.now()}"/>`)
   }, 10000)
@@ -69,24 +78,36 @@ ws.on('message', async (message: Buffer) => {
         break
   
       case 'session':
-        console.log(message.toString())
-        shutdown()
+        Sentry.captureMessage(`event.session | table: ${gameTableId} | ${message.toString()}`, 'log')
+        await shutdown()
         break
     }
   }catch(error) {
-    console.error(error)
-    shutdown()
+    Sentry.captureException(error, {
+      extra: {
+        event: 'ws.message',
+        table: gameTableId,
+      }
+    })
+    await shutdown()
   }
 })
 
-ws.on('error', (error: Error) => {
-  console.error(error)
+ws.on('error', async (error: Error) => {
+  Sentry.captureException(error, {
+    extra: {
+      event: 'ws.error',
+      table: gameTableId,
+    }
+  })
+  await Sentry.flush(2000) // Aguardar até 2 segundos para enviar eventos
   clearPingInterval()
   process.exit(1)
 })
 
-ws.on('close', (code: number, reason: Buffer) => {
-  console.log(`Disconnected from the game table. Code: ${code}, Reason: ${reason.toString() || 'N/A'}`)
+ws.on('close', async (code: number, reason: Buffer) => {
+  Sentry.captureMessage(`ws.close | table: ${gameTableId} | code: ${code} | reason: ${reason.toString() || 'N/A'}`, 'log')
+  await Sentry.flush(2000) // Aguardar até 2 segundos para enviar eventos
   clearPingInterval()
   process.exit(0)
 })
@@ -105,13 +126,21 @@ async function shutdown() {
       clearPingInterval();
     }
 
-    // console.log("📦 Encerrando conexão com o Prisma...");
-    // await prisma.$disconnect();
+    // Aguardar o Sentry enviar todos os eventos pendentes antes de encerrar
+    await Sentry.flush(2000); // Aguardar até 2 segundos para enviar eventos
 
     console.log("✔ Worker finalizado com segurança.");
     process.exit(0);
-  } catch (err) {
-    console.error("❌ Erro ao encerrar:", err);
+  } catch (error) {
+    if (process.env.SENTRY_DSN) {
+      Sentry.captureException(error, {
+        extra: {
+          event: 'shutdown.error',
+          table: gameTableId
+        }
+      })
+      await Sentry.flush(2000); // Aguardar antes de encerrar
+    }
     clearPingInterval();
     process.exit(1);
   }

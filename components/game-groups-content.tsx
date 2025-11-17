@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQueryState } from "nuqs";
 import { getGameGroups, getTables, type GameGroup } from "@/actions/get-games";
 
 const GAMES_PER_GROUP = 84;
@@ -98,8 +99,16 @@ function GameGroupDisplay({ group }: GameGroupDisplayProps) {
 export default function GameGroupsContent() {
   const [gameGroups, setGameGroups] = useState<GameGroup[]>([]);
   const [loading, setLoading] = useState(true);
-  const [groupLimit, setGroupLimit] = useState(10);
-  const [selectedTable, setSelectedTable] = useState<string>("");
+  const [groupLimit, setGroupLimit] = useQueryState("limit", {
+    defaultValue: "2",
+    parse: (value) => value || "2",
+    serialize: (value) => value,
+  });
+  const [selectedTable, setSelectedTable] = useQueryState("table", {
+    defaultValue: "",
+    parse: (value) => value || "",
+    serialize: (value) => value,
+  });
   const [tables, setTables] = useState<string[]>([]);
 
   useEffect(() => {
@@ -107,9 +116,9 @@ export default function GameGroupsContent() {
       try {
         const tablesList = await getTables();
         setTables(tablesList);
-        // Selecionar a primeira mesa automaticamente se ainda não houver uma selecionada
-        if (tablesList.length > 0) {
-          setSelectedTable((prev) => (prev || tablesList[0]));
+        // Selecionar a primeira mesa automaticamente se ainda não houver uma selecionada na URL
+        if (tablesList.length > 0 && !selectedTable) {
+          setSelectedTable(tablesList[0]);
         }
       } catch (error) {
         console.error("Erro ao buscar mesas:", error);
@@ -117,40 +126,28 @@ export default function GameGroupsContent() {
     }
 
     fetchTables();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    async function fetchGames(showLoading = true) {
+    async function fetchGames() {
       // Só buscar jogos se houver uma mesa selecionada
       if (!selectedTable) return;
 
-      if (showLoading) {
-        setLoading(true);
-      }
+      setLoading(true);
       try {
-        const groups = await getGameGroups(groupLimit, selectedTable);
+        const limit = Number(groupLimit) || 2;
+        const groups = await getGameGroups(limit, selectedTable);
         setGameGroups(groups);
       } catch (error) {
         console.error("Erro ao buscar jogos:", error);
       } finally {
-        if (showLoading) {
-          setLoading(false);
-        }
+        setLoading(false);
       }
     }
 
-    // Buscar imediatamente quando os filtros mudarem
-    fetchGames(true);
-
-    // Configurar atualização automática a cada 30 segundos
-    const intervalId = setInterval(() => {
-      fetchGames(false); // Não mostrar loading nas atualizações automáticas
-    }, 30000);
-
-    // Limpar o intervalo quando o componente for desmontado ou as dependências mudarem
-    return () => {
-      clearInterval(intervalId);
-    };
+    // Buscar quando os filtros mudarem ou quando a página carregar
+    fetchGames();
   }, [groupLimit, selectedTable]);
 
   if (loading) {
@@ -182,8 +179,10 @@ export default function GameGroupsContent() {
           <select
             className="cursor-pointer rounded-xl border border-slate-200/50 bg-slate-100 px-6 py-2"
             value={groupLimit}
-            onChange={(e) => setGroupLimit(Number(e.target.value))}
+            onChange={(e) => setGroupLimit(e.target.value)}
           >
+            <option value="2">02</option>
+            <option value="4">04</option>
             <option value="10">10</option>
             <option value="20">20</option>
             <option value="30">30</option>

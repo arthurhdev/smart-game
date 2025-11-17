@@ -41,22 +41,28 @@ export async function getGameGroups(
     whereClause.table = table;
   }
 
-  // Buscar os grupos únicos limitados, filtrados por mesa se fornecida
-  const groups = await prisma.game.findMany({
+  // Buscar todos os grupos únicos com a data do último jogo de cada grupo
+  // Primeiro, vamos buscar os grupos com suas datas máximas
+  const allGroups = await prisma.game.groupBy({
+    by: ["group"],
     where: whereClause,
-    select: {
-      group: true,
-    },
-    distinct: ["group"],
-    take: limit,
-    orderBy: {
-      externalId: "desc",
+    _max: {
+      createdAt: true,
     },
   });
 
+  // Ordenar os grupos pela data do último jogo (mais recente primeiro)
+  const sortedGroups = allGroups
+    .sort((a, b) => {
+      const dateA = a._max.createdAt?.getTime() || 0;
+      const dateB = b._max.createdAt?.getTime() || 0;
+      return dateB - dateA; // Ordem decrescente (mais recente primeiro)
+    })
+    .slice(0, limit); // Aplicar o limite
+
   // Para cada grupo, buscar os jogos
   const gameGroups: GameGroup[] = await Promise.all(
-    groups.map(async ({ group }) => {
+    sortedGroups.map(async ({ group }) => {
       const games = await prisma.game.findMany({
         where: {
           group,
